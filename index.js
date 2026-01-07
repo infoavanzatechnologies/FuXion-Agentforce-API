@@ -123,6 +123,47 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+// Get Unison OAuth token
+async function getUnisonToken() {
+  const response = await axios.post(
+    "https://unison-presales1.avanzasolutions.com:3000/oauth/token",
+    {
+      username: process.env.UNISON_USERNAME,
+      password: process.env.UNISON_PASSWORD,
+      grant_type: "password"
+    },
+    {
+      headers: {
+        Authorization: `Basic ${process.env.UNISON_BASIC_AUTH}`,
+        "Content-Type": "application/json"
+      },
+      timeout: 10000
+    }
+  );
+
+  return response.data; // usually contains access_token, token_type, expires_in
+}
+
+
+app.post('/unison/token', async (req, res) => {
+  try {
+    const tokenResponse = await getUnisonToken();
+
+    res.json({
+      success: true,
+      token: tokenResponse
+    });
+  } catch (err) {
+    console.error(err.response?.data || err.message);
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch Unison OAuth token'
+    });
+  }
+});
+
+
 app.listen(3000, () => {
   console.log('Node server running on port 3000');
 });
