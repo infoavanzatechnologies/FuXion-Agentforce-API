@@ -135,7 +135,8 @@ async function getUnisonToken() {
     {
       headers: {
         Authorization: `Basic ${process.env.UNISON_BASIC_AUTH}`,
-        "Content-Type": "application/json"
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
       },
       timeout: 10000
     }
