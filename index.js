@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const qs = require('qs');
 
 const app = express();
 app.use(express.json());
@@ -125,13 +126,15 @@ app.post('/chat', async (req, res) => {
 
 // Get Unison OAuth token
 async function getUnisonToken() {
+  const data = qs.stringify({
+    username: process.env.UNISON_USERNAME,
+    password: process.env.UNISON_PASSWORD,
+    grant_type: 'password'
+  });
+
   const response = await axios.post(
-    "https://unison-presales1.avanzasolutions.com:3000/oauth/token",
-    {
-      username: process.env.UNISON_USERNAME,
-      password: process.env.UNISON_PASSWORD,
-      grant_type: "password"
-    },
+    'https://unison-presales1.avanzasolutions.com:3000/oauth/token',
+    data,
     {
       headers: {
         Authorization: `Basic ${process.env.UNISON_BASIC_AUTH}`,
@@ -142,9 +145,8 @@ async function getUnisonToken() {
     }
   );
 
-  return response.data; // usually contains access_token, token_type, expires_in
+  return response.data;
 }
-
 
 app.post('/unison/token', async (req, res) => {
   try {
