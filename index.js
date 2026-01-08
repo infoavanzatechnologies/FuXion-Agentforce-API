@@ -217,7 +217,7 @@ app.post('/unison/create-case', async (req, res) => {
 
     // HARD-CODED CASE PAYLOAD
     const casePayload = {
-      COMPLAINT_TYPE: "280624182821211",
+      COMPLAINT_TYPE: "2021-04-05-134652",
       COMPLAINT_TICKET_NUMBER: "",
       CUST_RELATION_NUM: "619",
       PRODUCT_CODE: "CA",
