@@ -166,6 +166,75 @@ app.post('/unison/token', async (req, res) => {
   }
 });
 
+const casePayload = {
+  COMPLAINT_TYPE: "280624182821211",
+  COMPLAINT_TICKET_NUMBER: "",
+  CUST_RELATION_NUM: "619",
+  PRODUCT_CODE: "CA",
+  PRODUCT_ENTITY_ID: "0000000004",
+  DOC_MEDIUM: "001",
+  PRODUCT_NUMBER: "",
+  COMPLAINT_MEASURE: "",
+  COMPLAINT_NATURE: "",
+  INVOLVE: "",
+  DOC_PRIORITY: "P2",
+  NOTES: "",
+  REF_COMP_NUM: "",
+  INVALID_COMPLAINT: "",
+  CURRENT_STATE: "",
+  CUST_CALLBACK_PHONE: "",
+  CUST_CALLBACK_EMAIL: "",
+  ALTERNATE_ADDRESS: "DUBAI",
+  ACK_EMAIL: "",
+  CUST_EMAIL: "brandon.tim@bestbank.com",
+  ACK_SMS: "",
+  CUST_MOBILE_NUM: "032025550141",
+  RESPONSE_LANGUAGE: "0000000077"
+};
+
+
+async function createUnisonCase(accessToken, casePayload) {
+  const response = await axios.post(
+    'https://unison-presales1.avanzasolutions.com:3000/unison/data/0000000075',
+    casePayload,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    }
+  );
+
+  return response.data;
+}
+
+app.post('/unison/create-case', async (req, res) => {
+  try {
+    const unisonTokenResponse = await getUnisonToken();
+    const accessToken = unisonTokenResponse.access_token;
+
+    const caseResponse = await createUnisonCase(
+      accessToken,
+      req.body
+    );
+
+    res.json({
+      success: true,
+      data: caseResponse
+    });
+
+  } catch (err) {
+    console.error(err.response?.data || err.message);
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create Unison case'
+    });
+  }
+});
+
 
 app.listen(3000, () => {
   console.log('Node server running on port 3000');
