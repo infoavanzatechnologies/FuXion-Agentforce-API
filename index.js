@@ -215,9 +215,36 @@ app.post('/unison/create-case', async (req, res) => {
     const unisonTokenResponse = await getUnisonToken();
     const accessToken = unisonTokenResponse.access_token;
 
+    // HARD-CODED CASE PAYLOAD
+    const casePayload = {
+      COMPLAINT_TYPE: "280624182821211",
+      COMPLAINT_TICKET_NUMBER: "",
+      CUST_RELATION_NUM: "619",
+      PRODUCT_CODE: "CA",
+      PRODUCT_ENTITY_ID: "0000000004",
+      DOC_MEDIUM: "001",
+      PRODUCT_NUMBER: "",
+      COMPLAINT_MEASURE: "",
+      COMPLAINT_NATURE: "",
+      INVOLVE: "",
+      DOC_PRIORITY: "P2",
+      NOTES: "",
+      REF_COMP_NUM: "",
+      INVALID_COMPLAINT: "",
+      CURRENT_STATE: "",
+      CUST_CALLBACK_PHONE: "",
+      CUST_CALLBACK_EMAIL: "",
+      ALTERNATE_ADDRESS: "DUBAI",
+      ACK_EMAIL: "",
+      CUST_EMAIL: "brandon.tim@bestbank.com",
+      ACK_SMS: "",
+      CUST_MOBILE_NUM: "032025550141",
+      RESPONSE_LANGUAGE: "0000000077"
+    };
+
     const caseResponse = await createUnisonCase(
       accessToken,
-      req.body
+      casePayload
     );
 
     res.json({
