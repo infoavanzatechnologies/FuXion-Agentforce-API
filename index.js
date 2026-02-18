@@ -191,24 +191,6 @@ async function sendMessageToLeadAgent(token, sessionId, message, sequenceId) {
   return res.data.messages[0].message;
 }
 
-// ElevenLabs TTS
-async function textToSpeechForLead(text) {
-  const response = await axios.post(
-    `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVEN_LEAD_VOICE_ID}`,
-    {
-      text,
-      model_id: "eleven_monolingual_v1"
-    },
-    {
-      headers: {
-        'xi-api-key': process.env.ELEVEN_LEAD_API_KEY
-      },
-      responseType: 'arraybuffer'
-    }
-  );
-  return response.data;
-}
-
 // Main Endpoint
 app.post('/lead', async (req, res) => {
   const userId = req.body.userId;
