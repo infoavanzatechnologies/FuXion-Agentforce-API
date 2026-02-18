@@ -218,9 +218,15 @@ app.post('/lead', async (req, res) => {
       agentReply
     });
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: 'Something went wrong' });
-  }
+  const errorDetails = err.response?.data || err.message;
+  console.error("Full error:", JSON.stringify(errorDetails, null, 2));
+  console.error("Status:", err.response?.status);
+  console.error("URL:", err.config?.url);
+  res.status(500).json({ 
+    error: 'Something went wrong',
+    details: errorDetails  // Remove this in production!
+  });
+}
 });
 
 
