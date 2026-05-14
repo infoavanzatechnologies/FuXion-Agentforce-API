@@ -370,6 +370,109 @@ app.post('/unison/create-case', async (req, res) => {
   }
 });
 
+// Add near top of server.js, after existing requires:
+const twilio = require('twilio');
+const VoiceResponse = twilio.twiml.VoiceResponse;
+
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
+// Separate map for DTMF sessions (don't mix with sessionMap)
+const dtmfSessions = {};
+
+// ─────────────────────────────────────────────────
+// CARD UNBLOCK — DTMF Collection via Twilio
+// ─────────────────────────────────────────────────
+
+// Step 1: ElevenLabs fires this tool when card unblock detected
+app.post('/tool/collect-card-dtmf', async (req, res) => {
+  const { call_sid } = req.body;
+  console.log('[DTMF] Tool called. call_sid:', call_sid);
+
+  if (!call_sid) {
+    return res.status(400).json({ error: 'call_sid is required' });
+  }
+
+  // Store session keyed by callSid
+  dtmfSessions[call_sid] = {
+    cardNumber: null,
+    pin: null,
+    startedAt: Date.now()
+  };
+
+  try {
+    await twilioClient.calls(call_sid).update({
+      url: `${process.env.BASE_URL}/gather/card?call_sid=${call_sid}`,
+      method: 'POST'
+    });
+
+    console.log('[DTMF] Call redirected to /gather/card');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DTMF] Twilio redirect failed:', err.message);
+    res.status(500).json({ error: 'Failed to redirect call' });
+  }
+});
+
+// Step 2: TwiML — collect 16-digit card number
+app.all('/gather/card', (req, res) => {
+  const call_sid = req.query.call_sid || req.body.call_sid;
+  const twiml = new VoiceResponse();
+
+  const gather = twiml.gather({
+    input: 'dtmf',
+    numDigits: 16,
+    timeout: 15,
+    finishOnKey: '#',
+    action: `${process.env.BASE_URL}/gather/pin?call_sid=${call_sid}`,
+    method: 'POST'
+  });
+
+  gather.say({
+    voice: 'Polly.Joanna',
+    language: 'en-US'
+  }, 'Please enter your 16 digit card number on your keypad, ' +
+     'followed by the hash key.');
+
+  twiml.say('We did not receive your card number. Please call back and try again.');
+  twiml.hangup();
+
+  res.type('text/xml').send(twiml.toString());
+});
+
+// Step 3: TwiML — store card number, collect 4-digit PIN
+app.post('/gather/pin', (req, res) => {
+  const call_sid = req.query.call_sid || req.body.call_sid;
+  const cardNumber = req.body.Digits;
+
+  console.log('[DTMF] Card received for', call_sid, '— last4:', cardNumber?.slice(-4));
+
+  if (dtmfSessions[call_sid]) {
+    dtmfSessions[call_sid].cardNumber = cardNumber;
+  }
+
+  const twiml = new VoiceResponse();
+  const gather = twiml.gather({
+    input: 'dtmf',
+    numDigits: 4,
+    timeout: 10,
+    finishOnKey: '#',
+    action: `${process.env.BASE_URL}/verify-card?call_sid=${call_sid}`,
+    method: 'POST'
+  });
+
+  gather.say({
+    voice: 'Polly.Joanna',
+    language: 'en-US'
+  }, 'Thank you. Now please enter your 4 digit PIN followed by the hash key.');
+
+  twiml.say('We did not receive your PIN. Please call back and try again.');
+  twiml.hangup();
+
+  res.type('text/xml').send(twiml.toString());
+});
 
 app.listen(3000, () => {
   console.log('Node server running on port 3000');
