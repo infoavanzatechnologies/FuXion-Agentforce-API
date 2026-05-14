@@ -575,11 +575,7 @@ app.all('/resume-agent', async (req, res) => {
 
     console.log('[RESUME] ElevenLabs raw TwiML:', elResponse.data);
 
-    const modifiedTwiml = elResponse.data.replace(
-      '</Stream>',
-      `<Parameter name="pending_call_sid" value="${req.body.CallSid}" />
-    </Stream>`
-    );
+    const modifiedTwiml = elResponse.data;
 
     console.log('[RESUME] Modified TwiML:', modifiedTwiml);
     res.type('text/xml').send(modifiedTwiml);
