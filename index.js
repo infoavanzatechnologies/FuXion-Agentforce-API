@@ -536,17 +536,25 @@ const resumeUrl = `${process.env.BASE_URL}/resume-agent?` +
   `&last4=${cardLast4}` +
   `&status=${encodeURIComponent(statusMsg)}`;
 
-console.log('[VERIFY] Redirecting via TwiML to:', resumeUrl);
+console.log('[VERIFY] Resume URL:', resumeUrl);
 
 const twiml = new VoiceResponse();
-twiml.redirect({ method: 'POST' }, resumeUrl);
+twiml.redirect(resumeUrl);
+
+console.log('[VERIFY] TwiML output:', twiml.toString());
 res.type('text/xml').send(twiml.toString());
 });
 
 // Step 5: Reconnect ElevenLabs with verification result injected
 app.all('/resume-agent', (req, res) => {
+  console.log('[RESUME] Endpoint hit');
+  console.log('[RESUME] Query:', req.query);
+
   const { verified, last4, status } = req.query;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
+
+  console.log('[RESUME] Agent ID:', agentId);
+  console.log('[RESUME] Verified:', verified);
 
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -558,6 +566,7 @@ app.all('/resume-agent', (req, res) => {
   </Connect>
 </Response>`;
 
+  console.log('[RESUME] TwiML:', twiml);
   res.type('text/xml').send(twiml);
 });
 
