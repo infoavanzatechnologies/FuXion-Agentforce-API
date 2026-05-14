@@ -597,10 +597,16 @@ app.post('/tool/get-card-result', (req, res) => {
   const { call_sid } = req.body;
   console.log('[RESULT] Checking pending result for:', call_sid);
 
+  // Handle empty or default value
+  if (!call_sid || call_sid === 'none') {
+    console.log('[RESULT] No valid call_sid provided');
+    return res.json({ has_result: false });
+  }
+
   const result = pendingResults[call_sid];
 
   if (result) {
-    delete pendingResults[call_sid]; // clear after reading
+    delete pendingResults[call_sid];
     console.log('[RESULT] Found result:', result);
     return res.json({
       has_result: true,
