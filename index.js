@@ -474,6 +474,107 @@ app.post('/gather/pin', (req, res) => {
   res.type('text/xml').send(twiml.toString());
 });
 
+// Step 4: Receive PIN, verify with Salesforce, reconnect ElevenLabs
+app.post('/verify-card', async (req, res) => {
+  const call_sid = req.query.call_sid || req.body.call_sid;
+  const pin = req.body.Digits;
+  const session = dtmfSessions[call_sid];
+
+  if (!session || !session.cardNumber) {
+    const twiml = new VoiceResponse();
+    twiml.say('Session expired. Please call back.');
+    twiml.hangup();
+    return res.type('text/xml').send(twiml.toString());
+  }
+
+  session.pin = pin;
+  console.log('[DTMF] Verifying card for call:', call_sid);
+
+  let verified = false;
+  let cardLast4 = session.cardNumber.slice(-4);
+  let statusMsg = '';
+
+  try {
+    const token = await getSFToken(); // reuse your existing function
+
+    // SOQL query — adapt object/field names to your SF schema
+    const soql = `SELECT Id, Card_Number__c, PIN__c, Status__c 
+                  FROM Bank_Card__c 
+                  WHERE Card_Number__c = '${session.cardNumber}' 
+                  LIMIT 1`;
+
+    const sfRes = await axios.get(
+      `${process.env.SF_INSTANCE}/services/data/v59.0/query`,
+      {
+        params: { q: soql },
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    );
+
+    const records = sfRes.data.records;
+    if (records.length === 0) {
+      statusMsg = 'Card not found';
+    } else {
+      const card = records[0];
+      if (card.PIN__c === pin) {
+        verified = true;
+        // Update card status to unblocked
+        await axios.patch(
+          `${process.env.SF_INSTANCE}/services/data/v59.0/sobjects/Bank_Card__c/${card.Id}`,
+          { Status__c: 'Active' },
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+        statusMsg = 'Card unblocked successfully';
+      } else {
+        statusMsg = 'PIN mismatch';
+      }
+    }
+  } catch (err) {
+    console.error('[DTMF] SF verification error:', err.response?.data || err.message);
+    statusMsg = 'Verification service error';
+  }
+
+  // Clean up DTMF session
+  delete dtmfSessions[call_sid];
+
+  // Redirect call back to ElevenLabs with result as Stream Parameters
+  await twilioClient.calls(call_sid).update({
+    url: `${process.env.BASE_URL}/resume-agent?` +
+         `call_sid=${call_sid}` +
+         `&verified=${verified}` +
+         `&last4=${cardLast4}` +
+         `&status=${encodeURIComponent(statusMsg)}`,
+    method: 'POST'
+  });
+
+  // Brief pause while redirect takes effect
+  const twiml = new VoiceResponse();
+  twiml.pause({ length: 1 });
+  res.type('text/xml').send(twiml.toString());
+});
+
+// Step 5: Reconnect ElevenLabs with verification result injected
+app.all('/resume-agent', (req, res) => {
+  const { verified, last4, status } = req.query;
+  const agentId = process.env.ELEVENLABS_AGENT_ID;
+
+  // These Stream Parameters map to ElevenLabs Variables
+  // card_verified, card_last4, unblock_status must be defined
+  // in your ElevenLabs agent Variables panel
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="wss://api.elevenlabs.io/v1/convai/twilio?agent_id=${agentId}">
+      <Parameter name="card_verified" value="${verified}" />
+      <Parameter name="card_last4"   value="${last4 || ''}" />
+      <Parameter name="unblock_status" value="${decodeURIComponent(status || '')}" />
+    </Stream>
+  </Connect>
+</Response>`;
+
+  res.type('text/xml').send(twiml);
+});
+
 app.listen(3000, () => {
   console.log('Node server running on port 3000');
 });
