@@ -550,24 +550,22 @@ app.all('/resume-agent', (req, res) => {
   console.log('[RESUME] Endpoint hit');
   console.log('[RESUME] Query:', req.query);
 
-  const { verified, last4, status } = req.query;
+  const { verified, last4 } = req.query;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
 
-  console.log('[RESUME] Agent ID:', agentId);
-  console.log('[RESUME] Verified:', verified);
+  // Exact URL from Twilio config + agent_id + our variables
+  const elevenLabsUrl = `https://api.us.elevenlabs.io/twilio/inbound_call` +
+    `?agent_id=${agentId}` +
+    `&variables_card_verified=${verified}` +
+    `&variables_card_last4=${last4 || ''}`;
 
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Connect>
-    <Stream url="wss://api.elevenlabs.io/v1/convai/twilio?agent_id=${agentId}">
-      <Parameter name="variables_card_verified" value="${verified}" />
-      <Parameter name="variables_card_last4"    value="${last4 || ''}" />
-    </Stream>
-  </Connect>
-</Response>`;
+  console.log('[RESUME] Redirecting to:', elevenLabsUrl);
 
-  console.log('[RESUME] TwiML:', twiml);
-  res.type('text/xml').send(twiml);
+  const twiml = new VoiceResponse();
+  twiml.redirect(elevenLabsUrl);
+
+  console.log('[RESUME] TwiML:', twiml.toString());
+  res.type('text/xml').send(twiml.toString());
 });
 
 app.listen(3000, () => {
