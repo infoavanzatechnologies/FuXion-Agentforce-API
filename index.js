@@ -392,11 +392,15 @@ app.post('/tool/collect-card-dtmf', async (req, res) => {
   const { call_sid } = req.body;
   console.log('[DTMF] Tool called. call_sid:', call_sid);
 
+  // Add these logs
+  console.log('[DTMF] TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID);
+  console.log('[DTMF] TWILIO_AUTH_TOKEN length:', process.env.TWILIO_AUTH_TOKEN?.length);
+  console.log('[DTMF] BASE_URL:', process.env.BASE_URL);
+
   if (!call_sid) {
     return res.status(400).json({ error: 'call_sid is required' });
   }
 
-  // Store session keyed by callSid
   dtmfSessions[call_sid] = {
     cardNumber: null,
     pin: null,
@@ -404,6 +408,9 @@ app.post('/tool/collect-card-dtmf', async (req, res) => {
   };
 
   try {
+    console.log('[DTMF] Attempting Twilio redirect...');
+    console.log('[DTMF] Redirect URL:', `${process.env.BASE_URL}/gather/card?call_sid=${call_sid}`);
+    
     await twilioClient.calls(call_sid).update({
       url: `${process.env.BASE_URL}/gather/card?call_sid=${call_sid}`,
       method: 'POST'
@@ -413,6 +420,9 @@ app.post('/tool/collect-card-dtmf', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[DTMF] Twilio redirect failed:', err.message);
+    console.error('[DTMF] Twilio error code:', err.code);
+    console.error('[DTMF] Twilio error status:', err.status);
+    console.error('[DTMF] Twilio error details:', JSON.stringify(err));
     res.status(500).json({ error: 'Failed to redirect call' });
   }
 });
