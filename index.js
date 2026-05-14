@@ -546,26 +546,55 @@ res.type('text/xml').send(twiml.toString());
 });
 
 // Step 5: Reconnect ElevenLabs with verification result injected
-app.all('/resume-agent', (req, res) => {
+app.all('/resume-agent', async (req, res) => {
   console.log('[RESUME] Endpoint hit');
   console.log('[RESUME] Query:', req.query);
 
   const { verified, last4 } = req.query;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
 
-  // Exact URL from Twilio config + agent_id + our variables
-  const elevenLabsUrl = `https://api.us.elevenlabs.io/twilio/inbound_call` +
-    `?agent_id=${agentId}` +
-    `&variables_card_verified=${verified}` +
-    `&variables_card_last4=${last4 || ''}`;
+  try {
+    // Fetch ElevenLabs' own TwiML to get the real WebSocket URL
+    const elResponse = await axios.post(
+      `https://api.us.elevenlabs.io/twilio/inbound_call`,
+      `AgentId=${agentId}`,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
 
-  console.log('[RESUME] Redirecting to:', elevenLabsUrl);
+    console.log('[RESUME] ElevenLabs raw TwiML:', elResponse.data);
 
-  const twiml = new VoiceResponse();
-  twiml.redirect(elevenLabsUrl);
+    // Extract WebSocket URL from their TwiML
+    const wsUrlMatch = elResponse.data.match(/url="([^"]+)"/);
+    const wsUrl = wsUrlMatch ? wsUrlMatch[1] : null;
 
-  console.log('[RESUME] TwiML:', twiml.toString());
-  res.type('text/xml').send(twiml.toString());
+    console.log('[RESUME] Extracted WebSocket URL:', wsUrl);
+
+    if (!wsUrl) {
+      throw new Error('Could not extract WebSocket URL from ElevenLabs TwiML');
+    }
+
+    // Build our own TwiML with the real WebSocket URL + our variables
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${wsUrl}">
+      <Parameter name="variables_card_verified" value="${verified}" />
+      <Parameter name="variables_card_last4" value="${last4 || ''}" />
+    </Stream>
+  </Connect>
+</Response>`;
+
+    console.log('[RESUME] Final TwiML:', twiml);
+    res.type('text/xml').send(twiml);
+
+  } catch (err) {
+    console.error('[RESUME] Error:', err.message);
+
+    // Fallback — redirect to ElevenLabs directly
+    const twiml = new VoiceResponse();
+    twiml.redirect(`https://api.us.elevenlabs.io/twilio/inbound_call?agent_id=${agentId}`);
+    res.type('text/xml').send(twiml.toString());
+  }
 });
 
 app.listen(3000, () => {
