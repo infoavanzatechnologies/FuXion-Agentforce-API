@@ -529,6 +529,18 @@ app.post('/verify-card', async (req, res) => {
 
   console.log('[VERIFY] Result:', verified, statusMsg);
 
+// Add near dtmfSessions declaration
+const pendingResults = {};
+
+// In /verify-card, after verification logic, BEFORE delete dtmfSessions:
+pendingResults[call_sid] = {
+  verified,
+  cardLast4,
+  statusMsg,
+  timestamp: Date.now()
+};
+console.log('[VERIFY] Result stored for later retrieval:', call_sid);
+
 delete dtmfSessions[call_sid];
 
 const resumeUrl = `${process.env.BASE_URL}/resume-agent?` +
@@ -551,13 +563,10 @@ app.all('/resume-agent', async (req, res) => {
   console.log('[RESUME] Query:', req.query);
   console.log('[RESUME] Body:', req.body);
 
-  const { verified, last4 } = req.query;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
 
   try {
-    // Forward real Twilio params to ElevenLabs — this is what they expect
     const twilioParams = new URLSearchParams(req.body).toString();
-    console.log('[RESUME] Forwarding Twilio params:', twilioParams);
 
     const elResponse = await axios.post(
       `https://api.us.elevenlabs.io/twilio/inbound_call`,
@@ -567,11 +576,9 @@ app.all('/resume-agent', async (req, res) => {
 
     console.log('[RESUME] ElevenLabs raw TwiML:', elResponse.data);
 
-    // Inject our variables into ElevenLabs' TwiML before </Stream>
     const modifiedTwiml = elResponse.data.replace(
       '</Stream>',
-      `<Parameter name="variables_card_verified" value="${verified}" />
-      <Parameter name="variables_card_last4" value="${last4 || ''}" />
+      `<Parameter name="pending_call_sid" value="${req.body.CallSid}" />
     </Stream>`
     );
 
@@ -580,15 +587,33 @@ app.all('/resume-agent', async (req, res) => {
 
   } catch (err) {
     console.error('[RESUME] ElevenLabs call failed:', err.response?.status);
-    console.error('[RESUME] ElevenLabs error body:', err.response?.data);
-
-    // Fallback
     const twiml = new VoiceResponse();
     twiml.redirect(
       `https://api.us.elevenlabs.io/twilio/inbound_call?agent_id=${agentId}`
     );
     res.type('text/xml').send(twiml.toString());
   }
+});
+
+app.post('/tool/get-card-result', (req, res) => {
+  const { call_sid } = req.body;
+  console.log('[RESULT] Checking pending result for:', call_sid);
+
+  const result = pendingResults[call_sid];
+
+  if (result) {
+    delete pendingResults[call_sid]; // clear after reading
+    console.log('[RESULT] Found result:', result);
+    return res.json({
+      has_result: true,
+      verified: result.verified,
+      card_last4: result.cardLast4,
+      status: result.statusMsg
+    });
+  }
+
+  console.log('[RESULT] No pending result found');
+  res.json({ has_result: false });
 });
 
 app.listen(3000, () => {
