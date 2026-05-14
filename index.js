@@ -382,7 +382,7 @@ const twilioClient = twilio(
 
 // Separate map for DTMF sessions (don't mix with sessionMap)
 const dtmfSessions = {};
-
+const pendingResults = {};
 // ─────────────────────────────────────────────────
 // CARD UNBLOCK — DTMF Collection via Twilio
 // ─────────────────────────────────────────────────
@@ -529,8 +529,6 @@ app.post('/verify-card', async (req, res) => {
 
   console.log('[VERIFY] Result:', verified, statusMsg);
 
-// Add near dtmfSessions declaration
-const pendingResults = {};
 
 // In /verify-card, after verification logic, BEFORE delete dtmfSessions:
 pendingResults[call_sid] = {
