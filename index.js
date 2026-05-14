@@ -383,6 +383,7 @@ const twilioClient = twilio(
 // Separate map for DTMF sessions (don't mix with sessionMap)
 const dtmfSessions = {};
 const pendingResults = {};
+let latestPendingResult = null;
 // ─────────────────────────────────────────────────
 // CARD UNBLOCK — DTMF Collection via Twilio
 // ─────────────────────────────────────────────────
@@ -531,13 +532,13 @@ app.post('/verify-card', async (req, res) => {
 
 
 // In /verify-card, after verification logic, BEFORE delete dtmfSessions:
-pendingResults[call_sid] = {
+latestPendingResult = {
   verified,
   cardLast4,
   statusMsg,
   timestamp: Date.now()
 };
-console.log('[VERIFY] Result stored for later retrieval:', call_sid);
+console.log('[VERIFY] Result stored as latest pending result');
 
 delete dtmfSessions[call_sid];
 
@@ -594,19 +595,11 @@ app.all('/resume-agent', async (req, res) => {
 });
 
 app.post('/tool/get-card-result', (req, res) => {
-  const { call_sid } = req.body;
-  console.log('[RESULT] Checking pending result for:', call_sid);
+  console.log('[RESULT] Checking latest pending result');
 
-  // Handle empty or default value
-  if (!call_sid || call_sid === 'none') {
-    console.log('[RESULT] No valid call_sid provided');
-    return res.json({ has_result: false });
-  }
-
-  const result = pendingResults[call_sid];
-
-  if (result) {
-    delete pendingResults[call_sid];
+  if (latestPendingResult) {
+    const result = latestPendingResult;
+    latestPendingResult = null; // clear after reading
     console.log('[RESULT] Found result:', result);
     return res.json({
       has_result: true,
