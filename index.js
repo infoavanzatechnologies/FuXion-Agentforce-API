@@ -6,6 +6,7 @@ const qs = require('qs');
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 let sessionMap = {}; // Stores user-specific session and sequence
 
@@ -507,6 +508,7 @@ app.post('/verify-card', async (req, res) => {
 
   delete dtmfSessions[call_sid];
 
+try {
   await twilioClient.calls(call_sid).update({
     url: `${process.env.BASE_URL}/resume-agent?` +
          `call_sid=${call_sid}` +
@@ -515,10 +517,13 @@ app.post('/verify-card', async (req, res) => {
          `&status=${encodeURIComponent(statusMsg)}`,
     method: 'POST'
   });
+} catch (err) {
+  console.error('[DTMF] Failed to resume ElevenLabs:', err.message);
+}
 
-  const twiml = new VoiceResponse();
-  twiml.pause({ length: 1 });
-  res.type('text/xml').send(twiml.toString());
+const twiml = new VoiceResponse();
+twiml.pause({ length: 1 });
+res.type('text/xml').send(twiml.toString());
 });
 
 // Step 5: Reconnect ElevenLabs with verification result injected
