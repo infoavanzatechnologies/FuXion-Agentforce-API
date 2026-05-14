@@ -526,16 +526,12 @@ app.all('/resume-agent', (req, res) => {
   const { verified, last4, status } = req.query;
   const agentId = process.env.ELEVENLABS_AGENT_ID;
 
-  // These Stream Parameters map to ElevenLabs Variables
-  // card_verified, card_last4, unblock_status must be defined
-  // in your ElevenLabs agent Variables panel
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
     <Stream url="wss://api.elevenlabs.io/v1/convai/twilio?agent_id=${agentId}">
-      <Parameter name="card_verified" value="${verified}" />
-      <Parameter name="card_last4"   value="${last4 || ''}" />
-      <Parameter name="unblock_status" value="${decodeURIComponent(status || '')}" />
+      <Parameter name="variables_card_verified" value="${verified}" />
+      <Parameter name="variables_card_last4"    value="${last4 || ''}" />
     </Stream>
   </Connect>
 </Response>`;
