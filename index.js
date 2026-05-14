@@ -477,8 +477,8 @@ app.post('/gather/pin', (req, res) => {
 // Step 4: Receive PIN, verify with Salesforce, reconnect ElevenLabs
 app.post('/verify-card', async (req, res) => {
   const call_sid = req.query.call_sid || req.body.call_sid;
-  const pin = req.body.Digits;
-  const session = dtmfSessions[call_sid];
+  const pin      = req.body.Digits;
+  const session  = dtmfSessions[call_sid];
 
   if (!session || !session.cardNumber) {
     const twiml = new VoiceResponse();
@@ -488,56 +488,25 @@ app.post('/verify-card', async (req, res) => {
   }
 
   session.pin = pin;
-  console.log('[DTMF] Verifying card for call:', call_sid);
 
-  let verified = false;
+  let verified  = false;
   let cardLast4 = session.cardNumber.slice(-4);
   let statusMsg = '';
 
-  try {
-    const token = await getSFToken(); // reuse your existing function
+  // HARDCODED for POC — swap this block with SF SOQL later
+  const TEST_CARD = '1234567890123456';
+  const TEST_PIN  = '1234';
 
-    // SOQL query — adapt object/field names to your SF schema
-    const soql = `SELECT Id, Card_Number__c, PIN__c, Status__c 
-                  FROM Bank_Card__c 
-                  WHERE Card_Number__c = '${session.cardNumber}' 
-                  LIMIT 1`;
-
-    const sfRes = await axios.get(
-      `${process.env.SF_INSTANCE}/services/data/v59.0/query`,
-      {
-        params: { q: soql },
-        headers: { Authorization: `Bearer ${token}` }
-      }
-    );
-
-    const records = sfRes.data.records;
-    if (records.length === 0) {
-      statusMsg = 'Card not found';
-    } else {
-      const card = records[0];
-      if (card.PIN__c === pin) {
-        verified = true;
-        // Update card status to unblocked
-        await axios.patch(
-          `${process.env.SF_INSTANCE}/services/data/v59.0/sobjects/Bank_Card__c/${card.Id}`,
-          { Status__c: 'Active' },
-          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-        );
-        statusMsg = 'Card unblocked successfully';
-      } else {
-        statusMsg = 'PIN mismatch';
-      }
-    }
-  } catch (err) {
-    console.error('[DTMF] SF verification error:', err.response?.data || err.message);
-    statusMsg = 'Verification service error';
+  if (session.cardNumber === TEST_CARD && pin === TEST_PIN) {
+    verified  = true;
+    statusMsg = 'Card unblocked successfully';
+  } else {
+    verified  = false;
+    statusMsg = 'PIN mismatch';
   }
 
-  // Clean up DTMF session
   delete dtmfSessions[call_sid];
 
-  // Redirect call back to ElevenLabs with result as Stream Parameters
   await twilioClient.calls(call_sid).update({
     url: `${process.env.BASE_URL}/resume-agent?` +
          `call_sid=${call_sid}` +
@@ -547,7 +516,6 @@ app.post('/verify-card', async (req, res) => {
     method: 'POST'
   });
 
-  // Brief pause while redirect takes effect
   const twiml = new VoiceResponse();
   twiml.pause({ length: 1 });
   res.type('text/xml').send(twiml.toString());
