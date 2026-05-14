@@ -529,30 +529,18 @@ app.post('/verify-card', async (req, res) => {
 
   console.log('[VERIFY] Result:', verified, statusMsg);
 
-  delete dtmfSessions[call_sid];
+delete dtmfSessions[call_sid];
 
-  const resumeUrl = `${process.env.BASE_URL}/resume-agent?` +
-    `call_sid=${call_sid}` +
-    `&verified=${verified}` +
-    `&last4=${cardLast4}` +
-    `&status=${encodeURIComponent(statusMsg)}`;
+const resumeUrl = `${process.env.BASE_URL}/resume-agent?` +
+  `verified=${verified}` +
+  `&last4=${cardLast4}` +
+  `&status=${encodeURIComponent(statusMsg)}`;
 
-  console.log('[VERIFY] Redirecting to resume URL:', resumeUrl);
+console.log('[VERIFY] Redirecting via TwiML to:', resumeUrl);
 
-  try {
-    await twilioClient.calls(call_sid).update({
-      url: resumeUrl,
-      method: 'POST'
-    });
-    console.log('[VERIFY] Twilio redirect to resume-agent successful');
-  } catch (err) {
-    console.error('[VERIFY] Twilio redirect failed:', err.message);
-    console.error('[VERIFY] Twilio error code:', err.code);
-  }
-
-  const twiml = new VoiceResponse();
-  twiml.pause({ length: 1 });
-  res.type('text/xml').send(twiml.toString());
+const twiml = new VoiceResponse();
+twiml.redirect({ method: 'POST' }, resumeUrl);
+res.type('text/xml').send(twiml.toString());
 });
 
 // Step 5: Reconnect ElevenLabs with verification result injected
