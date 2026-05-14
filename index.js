@@ -592,10 +592,11 @@ app.all('/resume-agent', async (req, res) => {
 
 app.post('/tool/get-card-result', (req, res) => {
   console.log('[RESULT] Checking latest pending result');
+  // ignore req.body.action — it's just a dummy to satisfy ElevenLabs
 
   if (latestPendingResult) {
     const result = latestPendingResult;
-    latestPendingResult = null; // clear after reading
+    latestPendingResult = null;
     console.log('[RESULT] Found result:', result);
     return res.json({
       has_result: true,
