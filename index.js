@@ -487,11 +487,20 @@ app.post('/gather/pin', (req, res) => {
 
 // Step 4: Receive PIN, verify with Salesforce, reconnect ElevenLabs
 app.post('/verify-card', async (req, res) => {
+  console.log('[VERIFY] Endpoint hit');
+  console.log('[VERIFY] Body:', req.body);
+  console.log('[VERIFY] Query:', req.query);
+
   const call_sid = req.query.call_sid || req.body.call_sid;
   const pin      = req.body.Digits;
   const session  = dtmfSessions[call_sid];
 
+  console.log('[VERIFY] call_sid:', call_sid);
+  console.log('[VERIFY] PIN entered:', pin);
+  console.log('[VERIFY] Session:', session);
+
   if (!session || !session.cardNumber) {
+    console.log('[VERIFY] Session not found or no card number');
     const twiml = new VoiceResponse();
     twiml.say('Session expired. Please call back.');
     twiml.hangup();
@@ -504,9 +513,11 @@ app.post('/verify-card', async (req, res) => {
   let cardLast4 = session.cardNumber.slice(-4);
   let statusMsg = '';
 
-  // HARDCODED for POC — swap this block with SF SOQL later
   const TEST_CARD = '1234567890123456';
   const TEST_PIN  = '1234';
+
+  console.log('[VERIFY] Card match:', session.cardNumber === TEST_CARD);
+  console.log('[VERIFY] PIN match:', pin === TEST_PIN);
 
   if (session.cardNumber === TEST_CARD && pin === TEST_PIN) {
     verified  = true;
@@ -516,24 +527,32 @@ app.post('/verify-card', async (req, res) => {
     statusMsg = 'PIN mismatch';
   }
 
+  console.log('[VERIFY] Result:', verified, statusMsg);
+
   delete dtmfSessions[call_sid];
 
-try {
-  await twilioClient.calls(call_sid).update({
-    url: `${process.env.BASE_URL}/resume-agent?` +
-         `call_sid=${call_sid}` +
-         `&verified=${verified}` +
-         `&last4=${cardLast4}` +
-         `&status=${encodeURIComponent(statusMsg)}`,
-    method: 'POST'
-  });
-} catch (err) {
-  console.error('[DTMF] Failed to resume ElevenLabs:', err.message);
-}
+  const resumeUrl = `${process.env.BASE_URL}/resume-agent?` +
+    `call_sid=${call_sid}` +
+    `&verified=${verified}` +
+    `&last4=${cardLast4}` +
+    `&status=${encodeURIComponent(statusMsg)}`;
 
-const twiml = new VoiceResponse();
-twiml.pause({ length: 1 });
-res.type('text/xml').send(twiml.toString());
+  console.log('[VERIFY] Redirecting to resume URL:', resumeUrl);
+
+  try {
+    await twilioClient.calls(call_sid).update({
+      url: resumeUrl,
+      method: 'POST'
+    });
+    console.log('[VERIFY] Twilio redirect to resume-agent successful');
+  } catch (err) {
+    console.error('[VERIFY] Twilio redirect failed:', err.message);
+    console.error('[VERIFY] Twilio error code:', err.code);
+  }
+
+  const twiml = new VoiceResponse();
+  twiml.pause({ length: 1 });
+  res.type('text/xml').send(twiml.toString());
 });
 
 // Step 5: Reconnect ElevenLabs with verification result injected
