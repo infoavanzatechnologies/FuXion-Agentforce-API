@@ -132,10 +132,10 @@ function handleDtmfDigit(digit, session) {
 
   if (session.mode === 'collecting_card') {
     session.cardDigits += digit;
-    console.log(`[DTMF] Card digit ${session.cardDigits.length}/${CARD_LENGTH}`);
+    console.log(`[DTMF] Card digit ${session.cardDigits.length}/${CARD_LENGTH}: "${digit}" — so far: "${session.cardDigits}"`);
 
     if (session.cardDigits.length >= CARD_LENGTH) {
-      console.log(`[DTMF] Card number complete — switching to PIN collection`);
+      console.log(`[DTMF] Card number complete: "${session.cardDigits}" — switching to PIN collection`);
       session.mode = 'collecting_pin';
       // ElevenLabs is likely disconnected here; injection is best-effort
       injectMessage(
@@ -147,10 +147,10 @@ function handleDtmfDigit(digit, session) {
 
   } else if (session.mode === 'collecting_pin') {
     session.pinDigits += digit;
-    console.log(`[DTMF] PIN digit ${session.pinDigits.length}/${PIN_LENGTH}`);
+    console.log(`[DTMF] PIN digit ${session.pinDigits.length}/${PIN_LENGTH}: "${digit}" — so far: "${session.pinDigits}"`);
 
     if (session.pinDigits.length >= PIN_LENGTH) {
-      console.log(`[DTMF] PIN complete — verifying`);
+      console.log(`[DTMF] PIN complete: "${session.pinDigits}" — verifying`);
       session.mode = 'verifying';
       verifyAndInject(session);
     }
@@ -165,7 +165,7 @@ async function verifyAndInject(session) {
                    session.pinDigits  === TEST_PIN;
   const last4    = session.cardDigits.slice(-4);
 
-  console.log(`[PROXY] Verification: ${verified ? '✅ PASS' : '❌ FAIL'} for ${session.callSid}`);
+  console.log(`[PROXY] Verification: ${verified ? '✅ PASS' : '❌ FAIL'} — card="${session.cardDigits}" pin="${session.pinDigits}" for ${session.callSid}`);
 
   session.mode       = 'conversation';
   session.cardDigits = '';
