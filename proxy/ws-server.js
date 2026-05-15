@@ -31,12 +31,6 @@ function twilioPayloadToEL(base64Mulaw) {
   return dst.toString('base64');
 }
 
-// Silent PCM chunk matching the size of a Twilio µ-law payload
-function silentELChunk(base64Mulaw) {
-  const len = Buffer.from(base64Mulaw, 'base64').length;
-  return Buffer.alloc(len * 4).toString('base64'); // zeros = silence
-}
-
 // ElevenLabs PCM 16-bit 16kHz base64 → Twilio µ-law 8kHz base64
 function linearToMulaw(sample) {
   const bias = 0x84;
@@ -263,9 +257,11 @@ function createProxyServer(httpServer, callParamsStore) {
           const digit = dtmf.processTwilioChunk(payload);
           if (digit) handleDtmfDigit(digit, session);
 
+          // Send real audio (not silence) so ElevenLabs VAD stays calibrated.
+          // Injected user_message events guide the conversation at the right moments.
           if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
             session.elevenLabsWs.send(JSON.stringify({
-              user_audio_chunk: silentELChunk(payload)
+              user_audio_chunk: twilioPayloadToEL(payload)
             }));
           }
         } else {
