@@ -71,6 +71,10 @@ function openElevenLabsSocket(wsUrl, convId, session) {
 
   elWs.on('message', (data) => {
     if (session.twilioWs?.readyState === WebSocket.OPEN) {
+      if (!session.firstAudioFromElevenLabs) {
+        session.firstAudioFromElevenLabs = true;
+        console.log(`[PROXY] ✅ First audio from ElevenLabs → forwarding to Twilio (${session.callSid})`);
+      }
       session.twilioWs.send(data);
     }
   });
@@ -231,6 +235,10 @@ function createProxyServer(httpServer, callParamsStore) {
           }
         } else {
           if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
+            if (!session.firstAudioFromTwilio) {
+              session.firstAudioFromTwilio = true;
+              console.log(`[PROXY] ✅ First audio from Twilio → forwarding to ElevenLabs (${session.callSid})`);
+            }
             session.elevenLabsWs.send(data);
           }
         }
