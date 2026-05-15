@@ -604,6 +604,6 @@ app.post('/tool/get-card-result', (req, res) => {
 const server = http.createServer(app);
 createProxyServer(server, callParamsStore);
 
-server.listen(process.env.PORT || 3000, () => {
+server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
