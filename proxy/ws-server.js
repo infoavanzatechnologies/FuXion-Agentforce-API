@@ -83,8 +83,8 @@ function openElevenLabsSocket(wsUrl, convId, session) {
     console.error(`[PROXY] ElevenLabs WS error (${session.callSid}):`, err.message)
   );
 
-  elWs.on('close', (code) =>
-    console.log(`[PROXY] ElevenLabs WS closed (${session.callSid}): ${code}`)
+  elWs.on('close', (code, reason) =>
+    console.log(`[PROXY] ElevenLabs WS closed (${session.callSid}): ${code} | Reason: ${reason?.toString()}`)
   );
 }
 
