@@ -59,8 +59,9 @@ function openElevenLabsSocket(wsUrl, convId, session) {
     elWs.send(JSON.stringify({
       event:          'start',
       sequenceNumber: '1',
+      streamSid:      session.streamSid,
       start: {
-        streamSid:        session.streamSid || `MZ_proxy_${session.callSid}`,
+        streamSid:        session.streamSid,
         callSid:           session.callSid,
         accountSid:        process.env.TWILIO_ACCOUNT_SID,
         tracks:           ['inbound'],
