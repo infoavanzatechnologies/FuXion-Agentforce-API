@@ -1,8 +1,12 @@
 require('dotenv').config();
 const express = require('express');
-const axios = require('axios');
+const http    = require('http');
+const axios   = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const qs = require('qs');
+const { createProxyServer, setDTMFMode } = require('./proxy/ws-server');
+
+const callParamsStore = {};
 
 const app = express();
 app.use(express.json());
@@ -371,14 +375,25 @@ app.post('/unison/create-case', async (req, res) => {
   }
 });
 
+// ─── Proxy — Inbound call from Twilio ─────────────────────────────────────
+app.post('/proxy/inbound', (req, res) => {
+  const { CallSid, From, To } = req.body;
+
+  console.log(`[PROXY] Inbound call: ${CallSid} from ${From}`);
+  callParamsStore[CallSid] = { from: From, to: To };
+
+  const wsUrl = `wss://${req.headers.host}/proxy/stream`;
+  console.log(`[PROXY] Returning TwiML with stream URL: ${wsUrl}`);
+
+  res.type('text/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<Response><Connect><Stream url="${wsUrl}" /></Connect></Response>`
+  );
+});
+
 // Add near top of server.js, after existing requires:
 const twilio = require('twilio');
 const VoiceResponse = twilio.twiml.VoiceResponse;
-
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 
 // Separate map for DTMF sessions (don't mix with sessionMap)
 const dtmfSessions = {};
@@ -393,39 +408,14 @@ app.post('/tool/collect-card-dtmf', async (req, res) => {
   const { call_sid } = req.body;
   console.log('[DTMF] Tool called. call_sid:', call_sid);
 
-  // Add these logs
-  console.log('[DTMF] TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID);
-  console.log('[DTMF] TWILIO_AUTH_TOKEN length:', process.env.TWILIO_AUTH_TOKEN?.length);
-  console.log('[DTMF] BASE_URL:', process.env.BASE_URL);
-
   if (!call_sid) {
     return res.status(400).json({ error: 'call_sid is required' });
   }
 
-  dtmfSessions[call_sid] = {
-    cardNumber: null,
-    pin: null,
-    startedAt: Date.now()
-  };
+  setDTMFMode(call_sid, 'collecting_card');
+  console.log('[DTMF] Mode set to collecting_card for:', call_sid);
 
-  try {
-    console.log('[DTMF] Attempting Twilio redirect...');
-    console.log('[DTMF] Redirect URL:', `${process.env.BASE_URL}/gather/card?call_sid=${call_sid}`);
-    
-    await twilioClient.calls(call_sid).update({
-      url: `${process.env.BASE_URL}/gather/card?call_sid=${call_sid}`,
-      method: 'POST'
-    });
-
-    console.log('[DTMF] Call redirected to /gather/card');
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[DTMF] Twilio redirect failed:', err.message);
-    console.error('[DTMF] Twilio error code:', err.code);
-    console.error('[DTMF] Twilio error status:', err.status);
-    console.error('[DTMF] Twilio error details:', JSON.stringify(err));
-    res.status(500).json({ error: 'Failed to redirect call' });
-  }
+  res.json({ success: true });
 });
 
 // Step 2: TwiML — collect 16-digit card number
@@ -610,6 +600,10 @@ app.post('/tool/get-card-result', (req, res) => {
   res.json({ has_result: false });
 });
 
-app.listen(3000, () => {
-  console.log('Node server running on port 3000');
+// ─── Start server ──────────────────────────────────────────────────────────
+const server = http.createServer(app);
+createProxyServer(server, callParamsStore);
+
+server.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
