@@ -93,12 +93,19 @@ function openElevenLabsSocket(wsUrl, convId, session) {
 
       if (tool_name === 'collect_card_dtmf') {
         sessions.setMode(session.callSid, 'collecting_card');
-        elWs.send(JSON.stringify({
+        const toolResult = JSON.stringify({
           type:         'client_tool_result',
           tool_call_id,
-          result:       JSON.stringify({ success: true }),
+          result:       'DTMF collection started',
           is_error:     false
-        }));
+        });
+        console.log(`[PROXY] → Sending client_tool_result: ${toolResult}`);
+        try {
+          elWs.send(toolResult);
+          console.log(`[PROXY] ✅ client_tool_result sent successfully`);
+        } catch (err) {
+          console.error(`[PROXY] ❌ Failed to send client_tool_result:`, err.message);
+        }
       }
       return; // never forward tool events to Twilio
     }
