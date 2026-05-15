@@ -83,6 +83,10 @@ function openElevenLabsSocket(wsUrl, convId, session) {
     let parsed = null;
     try { parsed = JSON.parse(raw); } catch { /* binary/audio frame */ }
 
+    if (parsed && parsed.type !== 'media' && parsed.event !== 'media') {
+      console.log(`[PROXY] ← EL event type="${parsed.type || parsed.event}" raw=${raw.substring(0, 200)}`);
+    }
+
     if (parsed?.type === 'client_tool_call') {
       const { tool_name, tool_call_id, parameters } = parsed.client_tool_call || {};
       console.log(`[PROXY] ← EL client_tool_call: ${tool_name} (${tool_call_id})`);
