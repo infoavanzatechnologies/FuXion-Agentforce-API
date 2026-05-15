@@ -60,7 +60,7 @@ function openElevenLabsSocket(wsUrl, convId, session) {
       event:          'start',
       sequenceNumber: '1',
       start: {
-        streamSid:        `MZ_proxy_${session.callSid}`,
+        streamSid:        session.streamSid || `MZ_proxy_${session.callSid}`,
         callSid:           session.callSid,
         accountSid:        process.env.TWILIO_ACCOUNT_SID,
         tracks:           ['inbound'],
@@ -184,12 +184,14 @@ function createProxyServer(httpServer, callParamsStore) {
 
       // ── start ──────────────────────────────────────────────────────────
       if (msg.event === 'start') {
-        const callSid = msg.start?.callSid;
+        const callSid   = msg.start?.callSid;
+        const streamSid = msg.start?.streamSid;
         if (!callSid) return;
 
-        console.log(`[PROXY] Call started: ${callSid}`);
-        session          = sessions.create(callSid);
-        session.twilioWs = twilioWs;
+        console.log(`[PROXY] Call started: ${callSid} streamSid: ${streamSid}`);
+        session             = sessions.create(callSid);
+        session.twilioWs    = twilioWs;
+        session.streamSid   = streamSid;
 
         const callParams = callParamsStore[callSid] || {};
 
