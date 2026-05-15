@@ -5,15 +5,19 @@ const sessions = new Map();
 function create(callSid) {
   sessions.set(callSid, {
     callSid,
-    twilioWs:      null,
-    elevenLabsWs:  null,
-    convId:        null,
-    mode:          'conversation', // conversation | collecting_card | collecting_pin | verifying
-    cardDigits:    '',
-    pinDigits:     '',
-    lastDtmfDigit: null,
-    lastDtmfTime:  0,
-    seqNumber:     1
+    twilioWs:        null,
+    elevenLabsWs:    null,
+    convId:          null,
+    streamSid:       null,
+    from:            '',
+    to:              '',
+    mode:            'conversation', // conversation | collecting_card | collecting_pin | verifying
+    cardDigits:      '',
+    pinDigits:       '',
+    lastDtmfDigit:   null,
+    lastDtmfTime:    0,
+    seqNumber:       1,
+    pendingInjection: null
   });
   return sessions.get(callSid);
 }
