@@ -82,7 +82,7 @@ function openElevenLabsSocket(wsUrl, convId, session) {
       console.log(`[PROXY] ← EL first message (${raw.length} bytes): ${raw.substring(0, 200)}`);
     }
     if (session.twilioWs?.readyState === WebSocket.OPEN) {
-      session.twilioWs.send(data);
+      session.twilioWs.send(typeof data === 'string' ? data : data.toString());
     }
   });
 
@@ -249,7 +249,7 @@ function createProxyServer(httpServer, callParamsStore) {
               const preview = typeof data === 'string' ? data.substring(0, 300) : data.toString().substring(0, 300);
               console.log(`[PROXY] → EL first media (type=${typeof data}): ${preview}`);
             }
-            session.elevenLabsWs.send(data);
+            session.elevenLabsWs.send(typeof data === 'string' ? data : data.toString());
           }
         }
       }
