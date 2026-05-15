@@ -49,14 +49,17 @@ function openElevenLabsSocket(wsUrl, convId, session) {
 
   elWs.on('open', () => {
     console.log(`[PROXY] ✅ ElevenLabs connected for ${session.callSid}`);
+    console.log(`[PROXY] convId=${convId} streamSid=${session.streamSid}`);
 
-    elWs.send(JSON.stringify({
+    const connectedMsg = JSON.stringify({
       event:    'connected',
       protocol: 'Call',
       version:  '1.0.0'
-    }));
+    });
+    console.log(`[PROXY] → EL connected: ${connectedMsg}`);
+    elWs.send(connectedMsg);
 
-    elWs.send(JSON.stringify({
+    const startMsg = JSON.stringify({
       event:          'start',
       sequenceNumber: '1',
       streamSid:      session.streamSid,
@@ -67,15 +70,18 @@ function openElevenLabsSocket(wsUrl, convId, session) {
         tracks:           ['inbound'],
         customParameters: { conversation_id: convId }
       }
-    }));
+    });
+    console.log(`[PROXY] → EL start: ${startMsg}`);
+    elWs.send(startMsg);
   });
 
   elWs.on('message', (data) => {
+    const raw = data.toString();
+    if (!session.firstAudioFromElevenLabs) {
+      session.firstAudioFromElevenLabs = true;
+      console.log(`[PROXY] ← EL first message (${raw.length} bytes): ${raw.substring(0, 200)}`);
+    }
     if (session.twilioWs?.readyState === WebSocket.OPEN) {
-      if (!session.firstAudioFromElevenLabs) {
-        session.firstAudioFromElevenLabs = true;
-        console.log(`[PROXY] ✅ First audio from ElevenLabs → forwarding to Twilio (${session.callSid})`);
-      }
       session.twilioWs.send(data);
     }
   });
@@ -240,7 +246,8 @@ function createProxyServer(httpServer, callParamsStore) {
           if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
             if (!session.firstAudioFromTwilio) {
               session.firstAudioFromTwilio = true;
-              console.log(`[PROXY] ✅ First audio from Twilio → forwarding to ElevenLabs (${session.callSid})`);
+              const preview = typeof data === 'string' ? data.substring(0, 300) : data.toString().substring(0, 300);
+              console.log(`[PROXY] → EL first media (type=${typeof data}): ${preview}`);
             }
             session.elevenLabsWs.send(data);
           }
