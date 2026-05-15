@@ -37,11 +37,37 @@ function silentELChunk(base64Mulaw) {
   return Buffer.alloc(len * 4).toString('base64'); // zeros = silence
 }
 
+// ElevenLabs PCM 16-bit 16kHz base64 → Twilio µ-law 8kHz base64
+function linearToMulaw(sample) {
+  const bias = 0x84;
+  const clip = 32635;
+  const sign = (sample >> 8) & 0x80;
+  if (sign !== 0) sample = -sample;
+  if (sample > clip) sample = clip;
+  sample += bias;
+  let exponent = 7;
+  for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {}
+  const mantissa = (sample >> (exponent + 3)) & 0x0F;
+  return ~(sign | (exponent << 4) | mantissa) & 0xFF;
+}
+
+function elPayloadToTwilio(base64Pcm) {
+  const src = Buffer.from(base64Pcm, 'base64');
+  // PCM 16kHz 16-bit → µ-law 8kHz: downsample ×2 (take every other sample), encode to µ-law
+  const numSamples = Math.floor(src.length / 4);
+  const dst = Buffer.alloc(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    dst[i] = linearToMulaw(src.readInt16LE(i * 4));
+  }
+  return dst.toString('base64');
+}
+
 // ─── ElevenLabs Direct Connection ─────────────────────────────────────────────
 
 function openElevenLabsSocket(session) {
   const agentId = process.env.ELEVENLABS_AGENT_ID;
-  const wsUrl   = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${agentId}&output_format=ulaw_8000`;
+  // No output_format param — ElevenLabs defaults to PCM 16kHz which we convert to µ-law for Twilio
+  const wsUrl   = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${agentId}`;
 
   const elWs = new WebSocket(wsUrl, {
     headers: { 'xi-api-key': process.env.ELEVEN_API_KEY }
@@ -81,7 +107,7 @@ function openElevenLabsSocket(session) {
       session.twilioWs.send(JSON.stringify({
         event:     'media',
         streamSid: session.streamSid,
-        media:     { payload: audioBase64 }
+        media:     { payload: elPayloadToTwilio(audioBase64) }
       }));
       return;
     }
