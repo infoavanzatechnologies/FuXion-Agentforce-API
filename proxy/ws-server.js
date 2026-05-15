@@ -70,21 +70,35 @@ function openElevenLabsSocket(wsUrl, convId, session) {
       }
     }));
 
-    // If reconnected after DTMF, inject the pending result immediately
-    if (session.pendingInjection) {
-      const text = session.pendingInjection;
-      session.pendingInjection = null;
-      console.log(`[PROXY] Injecting pending result after reconnect: "${text.substring(0, 80)}..."`);
-      setTimeout(() => injectMessage(session, text), 300);
-    }
   });
 
   elWs.on('message', (data) => {
     const raw = data.toString();
     if (!session.firstAudioFromElevenLabs) {
       session.firstAudioFromElevenLabs = true;
-      console.log(`[PROXY] ← EL first message (${raw.length} bytes)`);
+      console.log(`[PROXY] ← EL first message (${raw.length} bytes): ${raw.substring(0, 120)}`);
     }
+
+    // Intercept client-side tool calls so the WS stays open
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { /* binary/audio frame */ }
+
+    if (parsed?.type === 'client_tool_call') {
+      const { tool_name, tool_call_id, parameters } = parsed.client_tool_call || {};
+      console.log(`[PROXY] ← EL client_tool_call: ${tool_name} (${tool_call_id})`);
+
+      if (tool_name === 'collect_card_dtmf') {
+        sessions.setMode(session.callSid, 'collecting_card');
+        elWs.send(JSON.stringify({
+          type:         'client_tool_result',
+          tool_call_id,
+          result:       JSON.stringify({ success: true }),
+          is_error:     false
+        }));
+      }
+      return; // never forward tool events to Twilio
+    }
+
     if (session.twilioWs?.readyState === WebSocket.OPEN) {
       session.twilioWs.send(typeof data === 'string' ? data : data.toString());
     }
@@ -162,23 +176,7 @@ async function verifyAndInject(session) {
       `Please inform the customer that you were unable to verify their details ` +
       `and advise them to visit their nearest branch.`;
 
-  if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
-    injectMessage(session, text);
-  } else {
-    // ElevenLabs closed during DTMF — reconnect and inject result
-    console.log(`[PROXY] ElevenLabs disconnected — reconnecting to deliver verification result`);
-    session.pendingInjection = text;
-    try {
-      const { wsUrl, convId } = await getElevenLabsConnection({
-        callSid: session.callSid,
-        from:    session.from || '',
-        to:      session.to   || ''
-      });
-      openElevenLabsSocket(wsUrl, convId, session);
-    } catch (err) {
-      console.error(`[PROXY] Failed to reconnect to ElevenLabs for injection:`, err.message);
-    }
-  }
+  injectMessage(session, text);
 }
 
 function injectMessage(session, text) {
