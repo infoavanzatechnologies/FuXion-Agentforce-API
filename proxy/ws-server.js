@@ -94,6 +94,12 @@ function openElevenLabsSocket(session) {
       const audioBase64 = parsed.audio_event?.audio_base_64;
       if (!audioBase64 || session.twilioWs?.readyState !== WebSocket.OPEN) return;
 
+      // PIN prompt audio has started streaming — safe to accept PIN digits now
+      if (session.mode === 'waiting_for_pin_prompt') {
+        console.log(`[SESSION] ${session.callSid} mode: waiting_for_pin_prompt → collecting_pin (PIN prompt audio started)`);
+        session.mode = 'collecting_pin';
+      }
+
       session.twilioWs.send(JSON.stringify({
         event:     'media',
         streamSid: session.streamSid,
@@ -116,7 +122,7 @@ function openElevenLabsSocket(session) {
     // ── User transcript — suppress LLM response during DTMF collection ───────
     if (evType === 'user_transcript') {
       const transcript = parsed.user_transcription_event?.user_transcript;
-      const inDtmfMode = session?.mode === 'collecting_card' || session?.mode === 'collecting_pin';
+      const inDtmfMode = session?.mode === 'collecting_card' || session?.mode === 'collecting_pin' || session?.mode === 'waiting_for_pin_prompt';
       if (inDtmfMode && transcript === '...') {
         // Flush any premature audio the LLM may have queued before we redirect it
         if (session.twilioWs?.readyState === WebSocket.OPEN) {
@@ -175,8 +181,8 @@ function handleDtmfDigit(digit, session) {
     console.log(`[DTMF] Card digit ${session.cardDigits.length}/${CARD_LENGTH}: "${digit}" — so far: "${session.cardDigits}"`);
 
     if (session.cardDigits.length >= CARD_LENGTH) {
-      console.log(`[DTMF] Card complete: "${session.cardDigits}" — switching to PIN`);
-      session.mode = 'collecting_pin';
+      console.log(`[DTMF] Card complete: "${session.cardDigits}" — waiting for PIN prompt`);
+      session.mode = 'waiting_for_pin_prompt';
       injectMessage(
         session,
         'The customer has finished entering their 16 digit card number on the keypad. ' +
@@ -261,6 +267,10 @@ function createProxyServer(httpServer, callParamsStore) {
         const digit = msg.dtmf?.digit;
         if (!digit) return;
         console.log(`[DTMF] Native digit: "${digit}" mode: ${session.mode}`);
+        if (session.mode === 'waiting_for_pin_prompt') {
+          console.log(`[DTMF] Ignoring "${digit}" — waiting for PIN prompt audio`);
+          return;
+        }
         handleDtmfDigit(digit, session);
       }
 
@@ -273,7 +283,7 @@ function createProxyServer(httpServer, callParamsStore) {
         // During DTMF collection, do not forward audio to ElevenLabs.
         // Keypad tones would trigger "..." ASR transcripts causing the LLM
         // to respond prematurely. Twilio native dtmf events handle digits.
-        const inDtmfMode = session.mode === 'collecting_card' || session.mode === 'collecting_pin';
+        const inDtmfMode = session.mode === 'collecting_card' || session.mode === 'collecting_pin' || session.mode === 'waiting_for_pin_prompt';
         if (inDtmfMode) return;
 
         if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
