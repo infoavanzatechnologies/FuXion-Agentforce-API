@@ -3,9 +3,10 @@ const WebSocket  = require('ws');
 const dtmf       = require('./dtmf');
 const sessions   = require('./sessions');
 
-const CARD_LENGTH      = 16;
-const PIN_LENGTH       = 4;
-const DTMF_DEBOUNCE_MS = 150;
+const CARD_LENGTH         = 16;
+const PIN_LENGTH          = 4;
+// How many consecutive silent chunks (~20ms each) before a tone is considered ended
+const DTMF_SILENCE_CHUNKS = 4; // ~80ms
 
 // ─── Audio Conversion ─────────────────────────────────────────────────────────
 
@@ -155,11 +156,6 @@ function openElevenLabsSocket(session) {
 // ─── DTMF Handling ─────────────────────────────────────────────────────────
 
 function handleDtmfDigit(digit, session) {
-  const now = Date.now();
-  if (digit === session.lastDtmfDigit && now - session.lastDtmfTime < DTMF_DEBOUNCE_MS) return;
-  session.lastDtmfDigit = digit;
-  session.lastDtmfTime  = now;
-
   if (session.mode === 'collecting_card') {
     session.cardDigits += digit;
     console.log(`[DTMF] Card digit ${session.cardDigits.length}/${CARD_LENGTH}: "${digit}" — so far: "${session.cardDigits}"`);
@@ -255,7 +251,18 @@ function createProxyServer(httpServer, callParamsStore) {
 
         if (inDtmfMode) {
           const digit = dtmf.processTwilioChunk(payload);
-          if (digit) handleDtmfDigit(digit, session);
+          if (digit) {
+            session.dtmfSilentCount = 0;
+            if (!session.dtmfInTone) {
+              session.dtmfInTone = true;
+              handleDtmfDigit(digit, session);
+            }
+          } else {
+            session.dtmfSilentCount = (session.dtmfSilentCount || 0) + 1;
+            if (session.dtmfSilentCount >= DTMF_SILENCE_CHUNKS) {
+              session.dtmfInTone = false;
+            }
+          }
 
           // Send real audio (not silence) so ElevenLabs VAD stays calibrated.
           // Injected user_message events guide the conversation at the right moments.
