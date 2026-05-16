@@ -270,6 +270,12 @@ function createProxyServer(httpServer, callParamsStore) {
         const payload = msg.media?.payload;
         if (!payload) return;
 
+        // During DTMF collection, do not forward audio to ElevenLabs.
+        // Keypad tones would trigger "..." ASR transcripts causing the LLM
+        // to respond prematurely. Twilio native dtmf events handle digits.
+        const inDtmfMode = session.mode === 'collecting_card' || session.mode === 'collecting_pin';
+        if (inDtmfMode) return;
+
         if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
           if (!session.firstAudioFromTwilio) {
             session.firstAudioFromTwilio = true;
