@@ -12,7 +12,7 @@ const ALL_ROW_FREQS = [697, 770, 852, 941];
 const ALL_COL_FREQS = [1209, 1336, 1477];
 const ALL_FREQS     = [...ALL_ROW_FREQS, ...ALL_COL_FREQS];
 const SAMPLE_RATE   = 8000;
-const THRESHOLD     = 500;
+const THRESHOLD     = 50;
 
 function goertzel(samples, targetFreq, sampleRate) {
   const k     = Math.round((samples.length * targetFreq) / sampleRate);
