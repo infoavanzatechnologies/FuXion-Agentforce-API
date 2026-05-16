@@ -1,12 +1,9 @@
 require('dotenv').config();
 const WebSocket  = require('ws');
-const dtmf       = require('./dtmf');
 const sessions   = require('./sessions');
 
-const CARD_LENGTH         = 16;
-const PIN_LENGTH          = 4;
-// How many consecutive silent chunks (~20ms each) before a tone is considered ended
-const DTMF_SILENCE_CHUNKS = 4; // ~80ms
+const CARD_LENGTH = 16;
+const PIN_LENGTH  = 4;
 
 // ─── Audio Conversion ─────────────────────────────────────────────────────────
 
@@ -61,7 +58,6 @@ function elPayloadToTwilio(base64Pcm) {
 
 function openElevenLabsSocket(session) {
   const agentId = process.env.ELEVENLABS_AGENT_ID;
-  // No output_format param — ElevenLabs defaults to PCM 16kHz which we convert to µ-law for Twilio
   const wsUrl   = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${agentId}`;
 
   const elWs = new WebSocket(wsUrl, {
@@ -98,7 +94,6 @@ function openElevenLabsSocket(session) {
       const audioBase64 = parsed.audio_event?.audio_base_64;
       if (!audioBase64 || session.twilioWs?.readyState !== WebSocket.OPEN) return;
 
-      // output_format=ulaw_8000 → forward directly to Twilio
       session.twilioWs.send(JSON.stringify({
         event:     'media',
         streamSid: session.streamSid,
@@ -120,8 +115,8 @@ function openElevenLabsSocket(session) {
 
     // ── User transcript — suppress LLM response during DTMF collection ───────
     if (evType === 'user_transcript') {
-      const transcript  = parsed.user_transcription_event?.user_transcript;
-      const inDtmfMode  = session?.mode === 'collecting_card' || session?.mode === 'collecting_pin';
+      const transcript = parsed.user_transcription_event?.user_transcript;
+      const inDtmfMode = session?.mode === 'collecting_card' || session?.mode === 'collecting_pin';
       if (inDtmfMode && transcript === '...') {
         const waitMsg = session.mode === 'collecting_card'
           ? 'The customer is still entering their 16-digit card number on the keypad. Stay silent and wait — do not respond until you receive the injection confirming all digits are collected.'
@@ -168,7 +163,7 @@ function openElevenLabsSocket(session) {
   );
 }
 
-// ─── DTMF Handling ─────────────────────────────────────────────────────────
+// ─── DTMF Handling ────────────────────────────────────────────────────────────
 
 function handleDtmfDigit(digit, session) {
   if (session.mode === 'collecting_card') {
@@ -225,7 +220,7 @@ function injectMessage(session, text) {
   }
 }
 
-// ─── Main WebSocket Server ─────────────────────────────────────────────────
+// ─── Main WebSocket Server ────────────────────────────────────────────────────
 
 function createProxyServer(httpServer, callParamsStore) {
   const wss = new WebSocket.Server({ server: httpServer, path: '/proxy/stream' });
@@ -256,46 +251,29 @@ function createProxyServer(httpServer, callParamsStore) {
         openElevenLabsSocket(session);
       }
 
+      // ── dtmf — native Twilio DTMF digit ───────────────────────────────────
+      else if (msg.event === 'dtmf') {
+        if (!session) return;
+        const digit = msg.dtmf?.digit;
+        if (!digit) return;
+        console.log(`[DTMF] Native digit: "${digit}" mode: ${session.mode}`);
+        handleDtmfDigit(digit, session);
+      }
+
       // ── media ──────────────────────────────────────────────────────────────
       else if (msg.event === 'media') {
         if (!session) return;
         const payload = msg.media?.payload;
         if (!payload) return;
 
-        const inDtmfMode = session.mode === 'collecting_card' || session.mode === 'collecting_pin';
-
-        if (inDtmfMode) {
-          const digit = dtmf.processTwilioChunk(payload);
-          if (digit) {
-            session.dtmfSilentCount = 0;
-            if (!session.dtmfInTone) {
-              session.dtmfInTone = true;
-              handleDtmfDigit(digit, session);
-            }
-          } else {
-            session.dtmfSilentCount = (session.dtmfSilentCount || 0) + 1;
-            if (session.dtmfSilentCount >= DTMF_SILENCE_CHUNKS) {
-              session.dtmfInTone = false;
-            }
+        if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
+          if (!session.firstAudioFromTwilio) {
+            session.firstAudioFromTwilio = true;
+            console.log(`[PROXY] ✅ First audio from Twilio → ElevenLabs (${session.callSid})`);
           }
-
-          // Send real audio (not silence) so ElevenLabs VAD stays calibrated.
-          // Injected user_message events guide the conversation at the right moments.
-          if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
-            session.elevenLabsWs.send(JSON.stringify({
-              user_audio_chunk: twilioPayloadToEL(payload)
-            }));
-          }
-        } else {
-          if (session.elevenLabsWs?.readyState === WebSocket.OPEN) {
-            if (!session.firstAudioFromTwilio) {
-              session.firstAudioFromTwilio = true;
-              console.log(`[PROXY] ✅ First audio from Twilio → ElevenLabs (${session.callSid})`);
-            }
-            session.elevenLabsWs.send(JSON.stringify({
-              user_audio_chunk: twilioPayloadToEL(payload)
-            }));
-          }
+          session.elevenLabsWs.send(JSON.stringify({
+            user_audio_chunk: twilioPayloadToEL(payload)
+          }));
         }
       }
 

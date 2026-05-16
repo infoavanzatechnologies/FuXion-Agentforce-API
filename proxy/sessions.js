@@ -14,8 +14,6 @@ function create(callSid) {
     mode:            'conversation', // conversation | collecting_card | collecting_pin | verifying
     cardDigits:      '',
     pinDigits:       '',
-    dtmfInTone:      false,
-    dtmfSilentCount: 0,
     seqNumber:       1,
     pendingInjection: null
   });
