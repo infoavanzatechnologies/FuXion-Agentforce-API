@@ -118,6 +118,10 @@ function openElevenLabsSocket(session) {
       const transcript = parsed.user_transcription_event?.user_transcript;
       const inDtmfMode = session?.mode === 'collecting_card' || session?.mode === 'collecting_pin';
       if (inDtmfMode && transcript === '...') {
+        // Flush any premature audio the LLM may have queued before we redirect it
+        if (session.twilioWs?.readyState === WebSocket.OPEN) {
+          session.twilioWs.send(JSON.stringify({ event: 'clear', streamSid: session.streamSid }));
+        }
         const waitMsg = session.mode === 'collecting_card'
           ? 'The customer is still entering their 16-digit card number on the keypad. Stay silent and wait — do not respond until you receive the injection confirming all digits are collected.'
           : 'The customer is still entering their 4-digit PIN on the keypad. Stay silent and wait — do not respond until you receive the injection confirming all digits are collected.';
