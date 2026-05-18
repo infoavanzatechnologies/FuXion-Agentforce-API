@@ -1,6 +1,7 @@
 require('dotenv').config();
-const WebSocket  = require('ws');
-const sessions   = require('./sessions');
+const WebSocket    = require('ws');
+const sessions     = require('./sessions');
+const { getSFToken, getBlockedCard, verifyCard } = require('../services/salesforce');
 
 const CARD_LENGTH = 16;
 const PIN_LENGTH  = 4;
@@ -156,6 +157,48 @@ function openElevenLabsSocket(session) {
         } catch (err) {
           console.error(`[PROXY] ❌ Failed to send client_tool_result:`, err.message);
         }
+
+        // Async: fetch the customer's blocked card from Salesforce using their phone number
+        (async () => {
+          try {
+            console.log(`[SF] Fetching blocked card for phone: ${session.from}`);
+            const token = await getSFToken();
+            const card  = await getBlockedCard(token, session.from);
+
+            if (!card.found) {
+              console.log(`[SF] No blocked card found for ${session.from} — resetting mode`);
+              sessions.setMode(session.callSid, 'conversation');
+              injectMessage(
+                session,
+                'No blocked card was found for this customer\'s phone number. ' +
+                'Please inform them that we could not locate a blocked card on their account ' +
+                'and offer to connect them to a human agent.'
+              );
+              return;
+            }
+
+            // Store card metadata on session for use during verification
+            session.cardId          = card.cardId;
+            session.maskedNumber    = card.maskedNumber;
+            session.rejectionReason = card.rejectionReason;
+
+            console.log(`[SF] Blocked card found: ${card.maskedNumber}, reason: ${card.rejectionReason}`);
+            injectMessage(
+              session,
+              `The customer's card ending in ${card.maskedNumber} is blocked. ` +
+              `Reason: ${card.rejectionReason}. ` +
+              `Please ask the customer to enter their full 16-digit card number on the keypad to verify their identity.`
+            );
+          } catch (err) {
+            console.error(`[SF] ❌ Failed to fetch blocked card:`, err.message);
+            sessions.setMode(session.callSid, 'conversation');
+            injectMessage(
+              session,
+              'We were unable to retrieve the customer\'s card details at this time due to a system error. ' +
+              'Please apologise and offer to connect them to a human agent.'
+            );
+          }
+        })();
       }
       return;
     }
@@ -203,22 +246,36 @@ function handleDtmfDigit(digit, session) {
 }
 
 async function verifyAndInject(session) {
-  const TEST_CARD = '1234567890123456';
-  const TEST_PIN  = '1234';
-  const verified  = session.cardDigits === TEST_CARD && session.pinDigits === TEST_PIN;
-  const last4     = session.cardDigits.slice(-4);
+  const cardDigits = session.cardDigits;
+  const pinDigits  = session.pinDigits;
+  const phone      = session.from;
 
-  console.log(`[PROXY] Verification: ${verified ? '✅ PASS' : '❌ FAIL'} — card="${session.cardDigits}" pin="${session.pinDigits}" for ${session.callSid}`);
-
+  // Clear state immediately so a stale mode can't accumulate extra digits
   session.mode       = 'conversation';
   session.cardDigits = '';
   session.pinDigits  = '';
 
-  const text = verified
-    ? `Card verification was successful. The customer's card ending in ${last4} has been verified and unblocked in our system. Please inform the customer warmly that their card has been successfully unblocked and they can now use it for transactions.`
-    : `Card verification failed. The card number or PIN entered does not match our records. Please inform the customer that you were unable to verify their details and advise them to visit their nearest branch.`;
+  console.log(`[SF] Calling Salesforce verify for phone: ${phone}, card last4: ${cardDigits.slice(-4)}`);
 
-  injectMessage(session, text);
+  try {
+    const token  = await getSFToken();
+    const result = await verifyCard(token, phone, cardDigits, pinDigits);
+
+    console.log(`[SF] Verification result: ${result.verified ? '✅ PASS' : '❌ FAIL'} — ${result.message}`);
+
+    const text = result.verified
+      ? `Card verification was successful. The customer's card ending in ${result.last4} has been verified and unblocked in our system. Please inform the customer warmly that their card has been successfully unblocked and they can now use it for transactions.`
+      : `Card verification failed. ${result.message}. Please inform the customer that we were unable to verify their details and advise them to visit their nearest branch or call back to try again.`;
+
+    injectMessage(session, text);
+  } catch (err) {
+    console.error(`[SF] ❌ Verification call failed:`, err.message);
+    injectMessage(
+      session,
+      'We encountered a system error while verifying the card details. ' +
+      'Please apologise to the customer and offer to connect them to a human agent.'
+    );
+  }
 }
 
 function injectMessage(session, text) {

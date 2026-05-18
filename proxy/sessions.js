@@ -11,11 +11,15 @@ function create(callSid) {
     streamSid:       null,
     from:            '',
     to:              '',
-    mode:            'conversation', // conversation | collecting_card | collecting_pin | verifying
+    mode:            'conversation', // conversation | collecting_card | waiting_for_pin_prompt | collecting_pin | verifying
     cardDigits:      '',
     pinDigits:       '',
     seqNumber:       1,
-    pendingInjection: null
+    pendingInjection: null,
+    // Populated by Salesforce lookup when collect_card_dtmf fires
+    cardId:          null,
+    maskedNumber:    '',
+    rejectionReason: ''
   });
   return sessions.get(callSid);
 }
