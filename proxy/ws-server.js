@@ -161,12 +161,13 @@ function openElevenLabsSocket(session) {
         // Async: fetch the customer's blocked card from Salesforce using their phone number
         (async () => {
           try {
-            console.log(`[SF] Fetching blocked card for phone: ${session.from}`);
+            const testPhone = '+971554538343'; // hardcoded for testing
+            console.log(`[SF] Fetching blocked card for phone: ${testPhone}`);
             const token = await getSFToken();
-            const card  = await getBlockedCard(token, session.from);
+            const card  = await getBlockedCard(token, testPhone);
 
             if (!card.found) {
-              console.log(`[SF] No blocked card found for ${session.from} — resetting mode`);
+              console.log(`[SF] No blocked card found for ${testPhone} — resetting mode`);
               sessions.setMode(session.callSid, 'conversation');
               injectMessage(
                 session,
@@ -248,7 +249,7 @@ function handleDtmfDigit(digit, session) {
 async function verifyAndInject(session) {
   const cardDigits = session.cardDigits;
   const pinDigits  = session.pinDigits;
-  const phone      = session.from;
+  const phone      = '+971554538343'; // hardcoded for testing
 
   // Clear state immediately so a stale mode can't accumulate extra digits
   session.mode       = 'conversation';
