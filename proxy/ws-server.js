@@ -162,12 +162,17 @@ function openElevenLabsSocket(session) {
       // ── process_unblock_decision — customer said "unblock" or "fraud" ─────
       if (tool_name === 'process_unblock_decision') {
         const decision = parsed.client_tool_call?.parameters?.decision;
-        console.log(`[PROXY] Unblock decision: "${decision}"`);
+        console.log(`[PROXY] Unblock decision: "${decision}" (mode: ${session.mode})`);
 
         try {
           elWs.send(JSON.stringify({ type: 'client_tool_result', tool_call_id, result: 'Decision received', is_error: false }));
         } catch (err) {
           console.error(`[PROXY] ❌ Failed to send client_tool_result:`, err.message);
+        }
+
+        if (session.mode !== 'awaiting_decision') {
+          console.log(`[PROXY] Ignoring duplicate process_unblock_decision — mode is already "${session.mode}"`);
+          return;
         }
 
         if (decision === 'unblock') {
