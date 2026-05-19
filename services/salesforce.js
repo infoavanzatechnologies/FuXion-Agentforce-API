@@ -33,6 +33,7 @@ const apexBase = () => process.env.SF_APEX_BASE_URL; // e.g. https://org.my.sale
  */
 async function getBlockedCard(token, phone) {
   const url = `${apexBase()}/FuXionCardService/blocked`;
+  console.log(`[SF] GET ${url}?phone=${phone}`);
   const res = await axios.get(url, {
     params:  { phone },
     headers: { Authorization: `Bearer ${token}` }
