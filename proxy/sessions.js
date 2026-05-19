@@ -11,7 +11,7 @@ function create(callSid) {
     streamSid:       null,
     from:            '',
     to:              '',
-    mode:            'conversation', // conversation | collecting_card | waiting_for_pin_prompt | collecting_pin | verifying
+    mode:            'conversation', // conversation | collecting_card | waiting_for_pin_prompt | collecting_pin | verifying | awaiting_decision
     cardDigits:      '',
     pinDigits:       '',
     seqNumber:       1,
