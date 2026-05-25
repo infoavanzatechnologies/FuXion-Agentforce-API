@@ -418,6 +418,31 @@ app.post('/tool/collect-card-dtmf', async (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Block Card — Fetch Active Cards ─────────────────────────────────────────
+// Called by ElevenLabs as a server tool (or for manual testing) when the
+// customer says they want to block a card. Returns the list of active cards.
+const { getActiveCards: _getActiveCards, getSFToken: _getSFToken } = require('./services/salesforce');
+
+app.post('/tool/get-active-cards', async (req, res) => {
+  const phone = req.body?.phone || '+971554538343'; // fallback for testing
+  console.log('[CARDS] Fetching active cards for phone:', phone);
+
+  try {
+    const token = await _getSFToken();
+    const cards = await _getActiveCards(token, phone);
+
+    if (!cards || cards.length === 0) {
+      return res.json({ found: false, cards: [], message: 'No active cards found for this customer.' });
+    }
+
+    console.log(`[CARDS] Found ${cards.length} active card(s)`);
+    res.json({ found: true, cards });
+  } catch (err) {
+    console.error('[CARDS] ❌ Error fetching active cards:', err.message);
+    res.status(500).json({ found: false, cards: [], message: 'System error fetching card list.' });
+  }
+});
+
 // Step 2: TwiML — collect 16-digit card number
 app.all('/gather/card', (req, res) => {
   const call_sid = req.query.call_sid || req.body.call_sid;

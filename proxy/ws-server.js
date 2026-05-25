@@ -1,7 +1,7 @@
 require('dotenv').config();
 const WebSocket    = require('ws');
 const sessions     = require('./sessions');
-const { getSFToken, getBlockedCard, verifyCard } = require('../services/salesforce');
+const { getSFToken, getBlockedCard, verifyCard, getActiveCards, blockCard } = require('../services/salesforce');
 
 const CARD_LENGTH = 16;
 const PIN_LENGTH  = 4;
@@ -145,6 +145,10 @@ function openElevenLabsSocket(session) {
       console.log(`[PROXY] ← EL client_tool_call: ${tool_name} (${tool_call_id})`);
 
       if (tool_name === 'collect_card_dtmf') {
+        // Reset to unblock flow in case a previous block flow ran on this session
+        session.flowType         = 'unblock';
+        session.selectedCardName = '';
+        session.selectedCardId   = null;
         sessions.setMode(session.callSid, 'collecting_card');
         try {
           elWs.send(JSON.stringify({
@@ -154,6 +158,57 @@ function openElevenLabsSocket(session) {
             is_error:     false
           }));
           console.log(`[PROXY] ✅ client_tool_result sent`);
+        } catch (err) {
+          console.error(`[PROXY] ❌ Failed to send client_tool_result:`, err.message);
+        }
+      }
+
+      // ── get_active_cards — fetch list of active cards for block flow ───────
+      if (tool_name === 'get_active_cards') {
+        console.log(`[PROXY] ← EL get_active_cards for ${session.callSid}`);
+        const phone = '+971554538343'; // hardcoded for testing — replace with session.from
+        ;(async () => {
+          try {
+            const token = await getSFToken();
+            const cards = await getActiveCards(token, phone);
+            const result = (!cards || cards.length === 0)
+              ? JSON.stringify({ found: false, cards: [], message: 'No active cards found for this customer.' })
+              : JSON.stringify({ found: true, cards });
+            elWs.send(JSON.stringify({ type: 'client_tool_result', tool_call_id, result, is_error: false }));
+            console.log(`[PROXY] ✅ get_active_cards result sent: ${cards?.length ?? 0} card(s)`);
+          } catch (err) {
+            console.error(`[SF] ❌ getActiveCards failed:`, err.message);
+            elWs.send(JSON.stringify({
+              type:         'client_tool_result',
+              tool_call_id,
+              result:       JSON.stringify({ found: false, cards: [], message: 'System error fetching cards.' }),
+              is_error:     true
+            }));
+          }
+        })();
+      }
+
+      // ── collect_card_dtmf_block — start DTMF collection for block flow ─────
+      if (tool_name === 'collect_card_dtmf_block') {
+        const cardName = parsed.client_tool_call?.parameters?.card_name || '';
+        const cardId   = parsed.client_tool_call?.parameters?.card_id   || null;
+        console.log(`[PROXY] ← EL collect_card_dtmf_block — card: "${cardName}" id: ${cardId}`);
+
+        session.flowType         = 'block';
+        session.selectedCardName = cardName;
+        session.selectedCardId   = cardId;
+        session.cardDigits       = '';
+        session.pinDigits        = '';
+        sessions.setMode(session.callSid, 'collecting_card');
+
+        try {
+          elWs.send(JSON.stringify({
+            type:         'client_tool_result',
+            tool_call_id,
+            result:       'DTMF collection started for block flow',
+            is_error:     false
+          }));
+          console.log(`[PROXY] ✅ client_tool_result sent for collect_card_dtmf_block`);
         } catch (err) {
           console.error(`[PROXY] ❌ Failed to send client_tool_result:`, err.message);
         }
@@ -246,9 +301,13 @@ function handleDtmfDigit(digit, session) {
     console.log(`[DTMF] PIN digit ${session.pinDigits.length}/${PIN_LENGTH}: "${digit}" — so far: "${session.pinDigits}"`);
 
     if (session.pinDigits.length >= PIN_LENGTH) {
-      console.log(`[DTMF] PIN complete: "${session.pinDigits}" — verifying`);
+      console.log(`[DTMF] PIN complete: "${session.pinDigits}" — flowType: ${session.flowType}`);
       session.mode = 'verifying';
-      verifyAndInject(session);
+      if (session.flowType === 'block') {
+        blockAndInject(session);
+      } else {
+        verifyAndInject(session);
+      }
     }
   }
 }
@@ -285,6 +344,44 @@ async function verifyAndInject(session) {
     session.pinDigits  = '';
     session.mode = 'conversation';
     injectMessage(session, 'We encountered a system error retrieving card details. Please apologise to the customer and offer to connect them to a human agent.');
+  }
+}
+
+async function blockAndInject(session) {
+  const phone      = '+971554538343'; // hardcoded for testing — replace with session.from
+  const cardDigits = session.cardDigits;
+  const pinDigits  = session.pinDigits;
+  const cardName   = session.selectedCardName;
+
+  console.log(`[SF] blockAndInject — phone: ${phone}, card: "${cardName}", last4: ${cardDigits.slice(-4)}`);
+
+  // Clear digits immediately to prevent reuse
+  session.cardDigits = '';
+  session.pinDigits  = '';
+
+  try {
+    const token  = await getSFToken();
+    const result = await blockCard(token, phone, cardDigits, pinDigits);
+
+    session.mode     = 'conversation';
+    session.flowType = 'unblock'; // reset for any future flow on this call
+    console.log(`[SF] Block result: ${result.blocked ? '✅ BLOCKED' : '❌ FAIL'} — ${result.message}`);
+
+    const text = result.blocked
+      ? `The customer's card "${cardName}" ending in ${result.last4} has been successfully blocked in our system. ` +
+        `Please inform the customer warmly that their card has been blocked and they will not be able to use it for transactions. ` +
+        `Let them know they can call back at any time to unblock it. Ask if there is anything else you can help them with.`
+      : `Card blocking failed. ${result.message}. ` +
+        `Please inform the customer we were unable to block the card at this time and advise them to visit their nearest branch or call back to try again.`;
+
+    injectMessage(session, text);
+  } catch (err) {
+    console.error(`[SF] ❌ blockCard call failed:`, err.message);
+    session.cardDigits = '';
+    session.pinDigits  = '';
+    session.mode     = 'conversation';
+    session.flowType = 'unblock';
+    injectMessage(session, 'We encountered a system error while trying to block the card. Please apologise to the customer and offer to connect them to a human agent.');
   }
 }
 

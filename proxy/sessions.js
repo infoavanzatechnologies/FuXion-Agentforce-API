@@ -19,7 +19,11 @@ function create(callSid) {
     // Populated by Salesforce lookup when collect_card_dtmf fires
     cardId:          null,
     maskedNumber:    '',
-    rejectionReason: ''
+    rejectionReason: '',
+    // Block card flow fields
+    flowType:         'unblock',  // 'unblock' | 'block'
+    selectedCardName: '',         // card name the customer chose verbally
+    selectedCardId:   null        // Salesforce record Id of the card to block
   });
   return sessions.get(callSid);
 }
