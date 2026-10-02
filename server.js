@@ -53,7 +53,13 @@ app.get('/health', (_req, res) => res.send('ok'));
 
 // ── POST /voice ────────────────────────────────────────────────────────────────
 // Twilio hits this when the customer calls the Twilio number.
-// We start a bi-directional media stream (both_tracks) and dial the agent.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// TEST MODE (single-caller): comment the Dial block below and use <Say>+<Pause>
+// so only ONE phone call is needed to observe audio packets in the terminal.
+//
+// PRODUCTION MODE (two-party): uncomment the Dial block and comment test block.
+// ─────────────────────────────────────────────────────────────────────────────
 app.post('/voice', (req, res) => {
   const callSid = req.body.CallSid || 'unknown';
   const from = req.body.From || 'unknown';
@@ -63,32 +69,69 @@ app.post('/voice', (req, res) => {
   console.log(`    CallSid : ${callSid}`);
   console.log(`    From    : ${from}`);
 
-  if (!SECOND_NUMBER) {
-    console.error(`${CLR.red}   SECOND_NUMBER is not set in .env — cannot dial agent!${CLR.reset}`);
-  } else {
-    console.log(`    Dialling: ${SECOND_NUMBER}`);
-  }
+  // ── TEST MODE ── single caller, no Dial needed ────────────────────────────
+  // <Say> keeps the call alive and gives audio data on the inbound track.
+  // <Pause> holds the line open for 60 s so you can see packets arrive.
+  // Both tracks are streamed to /media WebSocket.
+  console.log(`    Mode    : TEST (single-caller — <Say>+<Pause>)`);
   console.log('═'.repeat(57));
 
-  // track="both_tracks" → Twilio streams BOTH inbound (customer) and
-  // outbound (agent) audio to our /media WebSocket endpoint.
-  // <Dial> connects the customer to the agent; the call stays open until
-  // either party hangs up — no <Pause> needed.
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Start>
     <Stream url="wss://${PUBLIC_HOST}/media" track="both_tracks"/>
   </Start>
-  <Dial>${SECOND_NUMBER}</Dial>
+  <Say>Connected. Please start speaking.</Say>
+  <Pause length="60"/>
 </Response>`;
 
-  console.log(' TwiML sent to Twilio:');
+  console.log(' TwiML sent to Twilio (TEST MODE):');
   console.log(twiml);
   console.log('═'.repeat(57) + '\n');
 
   res.setHeader('Content-Type', 'text/xml');
   res.send(twiml);
 });
+
+// ── PRODUCTION /voice (two-party Dial) — COMMENTED OUT for test mode ──────────
+// Uncomment the block below and comment the TEST MODE block above when you
+// want to re-enable the agent call forwarding via <Dial>.
+//
+// app.post('/voice', (req, res) => {
+//   const callSid = req.body.CallSid || 'unknown';
+//   const from = req.body.From || 'unknown';
+//
+//   console.log('\n' + CLR.bold + '═'.repeat(57) + CLR.reset);
+//   console.log(`${CLR.bold}  Incoming call${CLR.reset}`);
+//   console.log(`    CallSid : ${callSid}`);
+//   console.log(`    From    : ${from}`);
+//
+//   if (!SECOND_NUMBER) {
+//     console.error(`${CLR.red}   SECOND_NUMBER is not set in .env — cannot dial agent!${CLR.reset}`);
+//   } else {
+//     console.log(`    Dialling: ${SECOND_NUMBER}`);
+//   }
+//   console.log('═'.repeat(57));
+//
+//   // track="both_tracks" → Twilio streams BOTH inbound (customer) and
+//   // outbound (agent) audio to our /media WebSocket endpoint.
+//   // <Dial> connects the customer to the agent; the call stays open until
+//   // either party hangs up — no <Pause> needed.
+//   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+// <Response>
+//   <Start>
+//     <Stream url="wss://${PUBLIC_HOST}/media" track="both_tracks"/>
+//   </Start>
+//   <Dial>${SECOND_NUMBER}</Dial>
+// </Response>`;
+//
+//   console.log(' TwiML sent to Twilio:');
+//   console.log(twiml);
+//   console.log('═'.repeat(57) + '\n');
+//
+//   res.setHeader('Content-Type', 'text/xml');
+//   res.send(twiml);
+// });
 
 // ── HTTP server ────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
