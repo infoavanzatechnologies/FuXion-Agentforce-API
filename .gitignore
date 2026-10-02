@@ -1,5 +1,4 @@
-# Secret environment variables — never commit this file
-.env
+
 
 # Recorded audio files from calls
 recordings/
